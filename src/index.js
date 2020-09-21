@@ -2,8 +2,7 @@ import path from 'path';
 import { getInput, setFailed, startGroup, endGroup, debug } from '@actions/core';
 import { GitHub, context } from '@actions/github';
 import { exec } from '@actions/exec';
-import SizePlugin from 'size-plugin-core';
-import { fileExists, diffTable, toBool, stripHash } from './utils.js';
+import { getDiff, diffTable, toBool } from './utils.js';
 
 
 async function run(octokit, context, token) {
@@ -18,41 +17,17 @@ async function run(octokit, context, token) {
 		throw Error('Could not retrieve PR information. Only "pull_request" triggered workflows are currently supported.');
 	}
 
-	const plugin = new SizePlugin({
-		compression: getInput('compression'),
-		pattern: getInput('pattern') || '**/dist/**/*.js',
-		exclude: getInput('exclude') || '{**/*.map,**/node_modules/**}',
-		stripHash: stripHash(getInput('strip-hash'))
-	});
-
 	console.log(`PR #${pull_number} is targetted at ${pr.base.ref} (${pr.base.sha})`);
 
-	const buildScript = getInput('build-script') || 'build';
-	const cwd = process.cwd();
-
-	const yarnLock = await fileExists(path.resolve(cwd, 'yarn.lock'));
-	const packageLock = await fileExists(path.resolve(cwd, 'package-lock.json'));
-
-	let npm = `npm`;
-	let installScript = `npm install`;
-	if (yarnLock) {
-		installScript = npm = `yarn --frozen-lockfile`;
-	}
-	else if (packageLock) {
-		installScript = `npm ci`;
-	}
-
-	startGroup(`[current] Install Dependencies`);
-	console.log(`Installing using ${installScript}`)
-	await exec(installScript);
+	const buildScript = getInput('build-script');
+	startGroup(`[current] Build using '${buildScript}'`);
+	await exec(buildScript);
 	endGroup();
 
-	startGroup(`[current] Build using ${npm}`);
-	console.log(`Building using ${npm} run ${buildScript}`);
-	await exec(`${npm} run ${buildScript}`);
+	const benchmark = getInput('benchmark');
+	startGroup(`[current] Running benchmark on PR`);
+	const newBenchmarks = await runBenchmark(benchmark);
 	endGroup();
-
-	const newSizes = await plugin.readFromDisk(cwd);
 
 	startGroup(`[base] Checkout target branch`);
 	let baseRef;
@@ -86,27 +61,24 @@ async function run(octokit, context, token) {
 	}
 	endGroup();
 
-	startGroup(`[base] Install Dependencies`);
-	await exec(installScript);
+	const buildScript = getInput('build-script');
+	startGroup(`[current] Build using '${buildScript}'`);
+	await exec(buildScript);
 	endGroup();
 
-	startGroup(`[base] Build using ${npm}`);
-	await exec(`${npm} run ${buildScript}`);
+	const benchmark = getInput('benchmark');
+	startGroup(`[current] Running benchmark on target`);
+	const oldBenchmarks = await runBenchmark(benchmark);
 	endGroup();
 
-	const oldSizes = await plugin.readFromDisk(cwd);
-
-	const diff = await plugin.getDiff(oldSizes, newSizes);
-
+	const diff = await getDiff(oldBenchmarks, newBenchmarks);
 	startGroup(`Size Differences:`);
-	const cliText = await plugin.printSizes(diff);
-	console.log(cliText);
 	endGroup();
 
 	const markdownDiff = diffTable(diff, {
-		collapseUnchanged: toBool(getInput('collapse-unchanged')),
-		omitUnchanged: toBool(getInput('omit-unchanged')),
-		showTotal: toBool(getInput('show-total')),
+		collapseUnchanged: true,
+		omitUnchanged: false,
+		showTotal: true,
 		minimumChangeThreshold: parseInt(getInput('minimum-change-threshold'), 10)
 	});
 
@@ -119,7 +91,7 @@ async function run(octokit, context, token) {
 
 	const comment = {
 		...commentInfo,
-		body: markdownDiff + '\n\n<a href="https://github.com/preactjs/compressed-size-action"><sub>compressed-size-action</sub></a>'
+		body: markdownDiff + '\n\n<a href="https://github.com/j-f1/performance-action"><sub>performance-action</sub></a>'
 	};
 
 	if (toBool(getInput('use-check'))) {
@@ -197,7 +169,7 @@ async function run(octokit, context, token) {
 
 	if (outputRawMarkdown) {
 		console.log(`
-			Error: compressed-size-action was unable to comment on your PR.
+			Error: performance-action was unable to comment on your PR.
 			This can happen for PR's originating from a fork without write permissions.
 			You can copy the size table directly into a comment using the markdown below:
 			\n\n${comment.body}\n\n

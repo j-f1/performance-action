@@ -1,6 +1,5 @@
 {
-  "name": "compressed-size-action",
-  "version": "2.0.1",
+  "private": true,
   "main": "index.js",
   "scripts": {
     "build": "microbundle -f cjs --define 'navigator={}' --compress --no-sourcemap --target node src/index.js",

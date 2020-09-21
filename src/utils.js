@@ -1,5 +1,48 @@
 import fs from 'fs';
-import prettyBytes from 'pretty-bytes';
+import ms from 'ms';
+import { exec } from '@actions/exec';
+import { getInput } from '@actions/core';
+
+export async function runBenchmark() {
+	let benchmarkBuffers = []
+	await exec(getInput('benchmark'), [], {
+		listeners: {
+			stdout: data => benchmarkData.push(data)
+		}
+	});
+	const output = Buffer.concat(benchmarkBuffers).toString('utf8')
+	return parse(output)
+}
+
+const firstLineRe = /^Running '(.+)' \.\.\.$/
+const secondLineRe = /^done ([\d.]+) ms$/
+
+function parse(benchmarkData) {
+	const lines = benchmarkData.split('\n')
+	const benchmarks = Object.create(null)
+	for (let i = 0; i < lines.length - 1; i += 2) {
+		const [, name] = firstLineRe.exec(lines[i])
+		const [, time] = secondLineRe.exec(lines[i])
+		benchmarks[name] = parseFloat(time)
+	}
+	return benchmarks
+}
+
+/**
+ * @param {{[key: string]: number}} before
+ * @param {{[key: string]: number}} after
+ * @return {Diff[]}
+ */
+export function toDiff(before, after) {
+	const names = [...new Set([...Object.keys(before), ...Object.keys(after)])]
+	return names.map(name => {
+		const timeBefore = before[name] || 0
+		const timeAfter = after[name] || 0
+		const delta = timeAfter - timeBefore
+		return { name, time: timeAfter, delta }
+	})
+}
+
 
 /**
  * Check if a given file exists and can be accessed.
@@ -44,7 +87,7 @@ export function stripHash(regex) {
  * @param {number} difference
  */
 export function getDeltaText(delta, difference) {
-	let deltaText = (delta > 0 ? '+' : '') + prettyBytes(delta);
+	let deltaText = (delta > 0 ? '+' : '') + ms(delta);
 	if (delta && Math.abs(delta) > 1) {
 		deltaText += ` (${Math.abs(difference)}%)`;
 	}
@@ -91,7 +134,7 @@ function markdownTable(rows) {
 
 	return [
 		// Header
-		['Filename', 'Size', 'Change', ''].slice(0, columnLength),
+		['Test name', 'Duration', 'Change', ''].slice(0, columnLength),
 		// Align
 		[':---', ':---:', ':---:', ':---:'].slice(0, columnLength),
 		// Body
@@ -101,40 +144,40 @@ function markdownTable(rows) {
 
 /**
  * @typedef {Object} Diff
- * @property {string} filename
- * @property {number} size
+ * @property {string} name
+ * @property {number} time
  * @property {number} delta
  */
 
 /**
  * Create a Markdown table showing diff data
- * @param {Diff[]} files
+ * @param {Diff[]} tests
  * @param {object} options
  * @param {boolean} [options.showTotal]
  * @param {boolean} [options.collapseUnchanged]
  * @param {boolean} [options.omitUnchanged]
  * @param {number} [options.minimumChangeThreshold]
  */
-export function diffTable(files, { showTotal, collapseUnchanged, omitUnchanged, minimumChangeThreshold }) {
+export function diffTable(tests, { showTotal, collapseUnchanged, omitUnchanged, minimumChangeThreshold }) {
 	let changedRows = [];
 	let unChangedRows = [];
 
-	let totalSize = 0;
+	let totalTime = 0;
 	let totalDelta = 0;
-	for (const file of files) {
-		const { filename, size, delta } = file;
-		totalSize += size;
+	for (const file of tests) {
+		const { name, time, delta } = file;
+		totalTime += time;
 		totalDelta += delta;
 
-		const difference = ((delta / size) * 100) | 0;
+		const difference = ((delta / time) * 100) | 0;
 		const isUnchanged = Math.abs(delta) < minimumChangeThreshold;
 
 		if (isUnchanged && omitUnchanged) continue;
 
 		const columns = [
-			`\`${filename}\``, 
-			prettyBytes(size), 
-			getDeltaText(delta, difference), 
+			name,
+			prettyBytes(time),
+			getDeltaText(delta, difference),
 			iconForDifference(difference)
 		];
 		if (isUnchanged && collapseUnchanged) {
@@ -152,10 +195,10 @@ export function diffTable(files, { showTotal, collapseUnchanged, omitUnchanged, 
 	}
 
 	if (showTotal) {
-		const totalDifference = ((totalDelta / totalSize) * 100) | 0;
+		const totalDifference = ((totalDelta / totalTime) * 100) | 0;
 		let totalDeltaText = getDeltaText(totalDelta, totalDifference);
 		let totalIcon = iconForDifference(totalDifference);
-		out = `**Total Size:** ${prettyBytes(totalSize)}\n\n${out}`;
+		out = `**Total Size:** ${prettyBytes(totalTime)}\n\n${out}`;
 		out = `**Size Change:** ${totalDeltaText} ${totalIcon}\n\n${out}`;
 	}
 
