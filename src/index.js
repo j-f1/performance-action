@@ -1,8 +1,7 @@
-import path from 'path';
 import { getInput, setFailed, startGroup, endGroup, debug } from '@actions/core';
 import { GitHub, context } from '@actions/github';
 import { exec } from '@actions/exec';
-import { getDiff, diffTable, toBool } from './utils.js';
+import { toDiff, diffTable, toBool } from './utils.js';
 
 
 async function run(octokit, context, token) {
@@ -25,7 +24,7 @@ async function run(octokit, context, token) {
 	endGroup();
 
 	const benchmark = getInput('benchmark');
-	startGroup(`[current] Running benchmark on PR`);
+	startGroup(`[current] Running benchmark`);
 	const newBenchmarks = await runBenchmark(benchmark);
 	endGroup();
 
@@ -61,17 +60,15 @@ async function run(octokit, context, token) {
 	}
 	endGroup();
 
-	const buildScript = getInput('build-script');
-	startGroup(`[current] Build using '${buildScript}'`);
+	startGroup(`[base] Build using '${buildScript}'`);
 	await exec(buildScript);
 	endGroup();
 
-	const benchmark = getInput('benchmark');
-	startGroup(`[current] Running benchmark on target`);
+	startGroup(`[base] Running benchmark`);
 	const oldBenchmarks = await runBenchmark(benchmark);
 	endGroup();
 
-	const diff = await getDiff(oldBenchmarks, newBenchmarks);
+	const diff = await toDiff(oldBenchmarks, newBenchmarks);
 	startGroup(`Size Differences:`);
 	endGroup();
 
