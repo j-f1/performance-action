@@ -9,10 +9,9 @@ inputs:
     description: 'The GITHUB_TOKEN secret'
     required: true
   build-script:
-    description: 'The npm-script to run that builds your project'
-    default: 'build'
-  compression:
-    description: 'The compression algorithm to use: "gzip" or "brotli"'
+    description: 'The terminal command to build the project'
+  benchmark:
+    description: 'The command that produces the benchmark output'
   show-total:
     description: 'Show total size and difference.'
     default: 'true'
@@ -21,19 +20,11 @@ inputs:
     default: 'true'
   omit-unchanged:
     description: 'Exclude unchanged files from the sizes table entirely'
-  strip-hash:
-    description: 'A regular expression to remove hashes from filenames. Submatches are turned into asterisks if present, otherwise the whole match is removed.'
   use-check:
     description: 'Report status as a CI Check instead of using a comment [experimental]'
   minimum-change-threshold:
-    description: 'Consider files with changes below this threshold as unchanged. Specified in bytes.'
+    description: 'Consider files with changes below this threshold as unchanged. Specified in milliseconds.'
     default: 1
-  pattern:
-    description: 'minimatch pattern of files to track'
-    default:  '**/dist/**/*.js'
-  exclude:
-    description: 'minimatch pattern of files NOT to track'
-    default: '{**/*.map,**/node_modules/**}'
 runs:
   using: 'node12'
   main: 'index.js'
